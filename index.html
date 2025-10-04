@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VSE Stock Trainer</title>
+<style>
+body { font-family: system-ui, sans-serif; background:#f5f7fb; color:#111; margin:0; padding:0;}
+header { background:#0f1724; color:white; padding:12px 20px; display:flex; justify-content:space-between; align-items:center;}
+header h1 { margin:0; font-size:18px;}
+.container { padding:20px; max-width:1100px; margin:24px auto; background:white; border-radius:10px; box-shadow:0 6px 20px rgba(10,20,40,0.06);}
+.hidden { display:none;}
+input, button, select { padding:10px; border-radius:6px; border:1px solid #cbd5e1; font-size:14px; }
+button { cursor:pointer; background:#0f1724; color:white; border:none; }
+.card { padding:12px; border-radius:8px; background:#fff; box-shadow:0 4px 10px rgba(15,23,42,0.04); margin-bottom:12px;}
+.small { font-size:13px; color:#475569;}
+.search-suggestions { background:#fff; border:1px solid #e2e8f0; max-height:200px; overflow:auto; border-radius:6px; }
+.suggest-item { padding:8px; cursor:pointer; border-bottom:1px solid #f1f5f9; }
+.suggest-item:hover { background:#f8fafc; }
+table { width:100%; border-collapse:collapse; margin-top:12px;}
+th, td { text-align:left; padding:8px; border-bottom:1px solid #f1f5f9; }
+</style>
+</head>
+<body>
+<header>
+<h1>VSE Stock Trainer</h1>
+<div id="header-actions"></div>
+</header>
+
+<main class="container">
+
+<!-- COMMON PASSWORD -->
+<section id="view-common">
+<h2>Enter Common Password</h2>
+<input type="password" id="common-password" placeholder="Enter common password" style="width:200px; margin-right:8px;">
+<button id="btn-common">Enter</button>
+<p id="common-msg" class="small" style="margin-top:8px;"></p>
+</section>
+
+<!-- LOGIN / SIGNUP -->
+<section id="view-login" class="hidden">
+<h2>Login / Sign Up</h2>
+<p class="small">New accounts start with ₹50,000 virtual balance. Admin: <b>admin6@vse.com</b></p>
+<input id="email" type="email" placeholder="Email" style="width:100%; margin-bottom:8px">
+<input id="password" type="password" placeholder="Password" style="width:100%; margin-bottom:8px">
+<button id="btn-login">Login / Sign Up</button>
+<button id="btn-guest" style="background:#334155">Guest</button>
+<p id="login-msg" class="small"></p>
+</section>
+
+<!-- DASHBOARD -->
+<section id="view-dashboard" class="hidden">
+<h2>Dashboard</h2>
+<div>
+<span id="user-email" class="small"></span>
+<button id="btn-logout" style="margin-left:12px;background:#ef4444">Logout</button>
+</div>
+
+<div class="card">
+<h3>Search Company (Indian)</h3>
+<input id="search-input" placeholder="Type company name e.g., Tata">
+<button id="btn-search">Search</button>
+<div id="suggestions" class="search-suggestions hidden"></div>
+</div>
+
+<div class="card hidden" id="stock-panel">
+<h3 id="stock-name">Select a company</h3>
+<div id="tv-widget-wrap" style="height:420px;"></div>
+<div style="display:flex; gap:10px; margin-top:8px; align-items:center;">
+<div class="small">Price: <b id="live-price">-</b></div>
+<div class="small" style="margin-left:auto;">
+Qty: <input type="number" id="qty" value="1" style="width:80px;">
+<button id="btn-buy">Buy</button>
+<button id="btn-sell" style="background:#ef4444">Sell</button>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h3>Portfolio</h3>
+<div class="small">Balance: <b id="balance">-</b></div>
+<table>
+<thead><tr><th>Symbol</th><th>Qty</th><th>Avg Price</th><th>Curr Price</th><th>Value</th></tr></thead>
+<tbody id="portfolio-table"></tbody>
+</table>
+</div>
+
+<div class="card hidden" id="admin-link-card">
+<h3>Admin Panel</h3>
+<button id="btn-open-admin">Open Admin Panel</button>
+</div>
+</section>
+
+<!-- ADMIN -->
+<section id="view-admin" class="hidden">
+<h2>Admin Panel</h2>
+<button id="btn-admin-back" style="background:#334155;">Back</button>
+<table>
+<thead><tr><th>#</th><th>Email</th><th>Balance</th><th>Holdings</th><th>Total</th><th>Profit/Loss</th></tr></thead>
+<tbody id="admin-users-table"></tbody>
+</table>
+</section>
+
+<footer class="small" style="margin-top:12px;">Virtual trades only. Powered by TradingView.</footer>
+
+<!-- TradingView -->
+<script src="https://s3.tradingview.com/tv.js"></script>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCSge0yGXLBAR-hSo9Z4JPsPvcOPhilj8c",
+  authDomain: "vseweb-73d5d.firebaseapp.com",
+  projectId: "vseweb-73d5d",
+  storageBucket: "vseweb-73d5d.firebasestorage.app",
+  messagingSenderId: "537511528277",
+  appId: "1:537511528277:web:434ede9ba7d63e2ded91dc"
+};
+
+const ADMIN_EMAIL = "admin6@vse.com";
+const ADMIN_PASSWORD = "adminvse2k25";
+const FINNHUB_API = "d3bm7n1r01qqg7bv706gd3bm7n1r01qqg7bv7070";
+
+const app = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+document.addEventListener('DOMContentLoaded', ()=>{
+
+  // --- UI Elements ---
+  const viewCommon = document.getElementById('view-common');
+  const viewLogin = document.getElementById('view-login');
+  const viewDashboard = document.getElementById('view-dashboard');
+  const viewAdmin = document.getElementById('view-admin');
+
+  const btnCommon = document.getElementById('btn-common');
+  const commonPwdEl = document.getElementById('common-password');
+  const commonMsg = document.getElementById('common-msg');
+
+  const emailEl = document.getElementById('email');
+  const pwdEl = document.getElementById('password');
+  const btnLogin = document.getElementById('btn-login');
+  const btnGuest = document.getElementById('btn-guest');
+  const loginMsg = document.getElementById('login-msg');
+  const userEmailLabel = document.getElementById('user-email');
+  const balanceEl = document.getElementById('balance');
+  const portfolioTableBody = document.getElementById('portfolio-table');
+  const stockPanel = document.getElementById('stock-panel');
+  const stockNameEl = document.getElementById('stock-name');
+  const tvWidgetWrap = document.getElementById('tv-widget-wrap');
+  const livePriceEl = document.getElementById('live-price');
+  const qtyEl = document.getElementById('qty');
+  const btnBuy = document.getElementById('btn-buy');
+  const btnSell = document.getElementById('btn-sell');
+  const searchInput = document.getElementById('search-input');
+  const btnSearch = document.getElementById('btn-search');
+  const suggestionsBox = document.getElementById('suggestions');
+  const btnLogout = document.getElementById('btn-logout');
+  const adminLinkCard = document.getElementById('admin-link-card');
+  const btnOpenAdmin = document.getElementById('btn-open-admin');
+  const btnAdminBack = document.getElementById('btn-admin-back');
+  const adminUsersTableBody = document.getElementById('admin-users-table');
+
+  let currentUser = null;
+  let selectedSymbol = null;
+  let tvWidget = null;
+
+  function show(view){
+    viewCommon.classList.add('hidden');
+    viewLogin.classList.add('hidden');
+    viewDashboard.classList.add('hidden');
+    viewAdmin.classList.add('hidden');
+    view.classList.remove('hidden');
+  }
+
+  // --- COMMON PASSWORD ---
+  btnCommon.addEventListener('click', ()=>{
+    if(commonPwdEl.value === 'vse2k25'){
+      show(viewLogin);
+    }else{
+      commonMsg.textContent = "Incorrect password";
+    }
+  });
+
+  // --- LOGIN ---
+  async function ensureUserDoc(uid,email){
+    const ref = doc(db,'users',uid);
+    const snap = await getDoc(ref);
+    if(!snap.exists()){
+      await setDoc(ref,{email,balance:50000,portfolio:{},trades:[],createdAt:Date.now()});
+      return {email,balance:50000,portfolio:{},trades:[]};
+    }
+    return snap.data();
+  }
+
+  btnLogin.addEventListener('click', async ()=>{
+    const email = emailEl.value.trim();
+    const pwd = pwdEl.value.trim();
+    if(!email || !pwd){ loginMsg.textContent="Enter email & password"; return;}
+    loginMsg.textContent="Working...";
+
+    try{
+      await signInWithEmailAndPassword(auth,email,pwd);
+    }catch(e){
+      if(e.code==='auth/user-not-found'){
+        await createUserWithEmailAndPassword(auth,email,pwd);
+      }else if(e.code==='auth/wrong-password'){
+        loginMsg.textContent="Wrong password"; return;
+      }else{
+        loginMsg.textContent=e.message; return;
+      }
+    }
+  });
+
+  btnGuest.addEventListener('click', async ()=>{
+    const gEmail = 'guest+'+Date.now()+'@local.test';
+    const gPwd = 'guest'+Math.random().toString(36).slice(2,10);
+    await createUserWithEmailAndPassword(auth,gEmail,gPwd);
+  });
+
+  btnLogout.addEventListener('click', async ()=>{
+    await signOut(auth);
+    currentUser = null;
+    show(viewLogin);
+  });
+
+  onAuthStateChanged(auth, async (user)=>{
+    if(user){
+      currentUser = user;
+      await ensureUserDoc(user.uid,user.email);
+      userEmailLabel.textContent=user.email;
+      balanceEl.textContent='₹50,000';
+      show(viewDashboard);
+      if(user.email===ADMIN_EMAIL) adminLinkCard.classList.remove('hidden');
+      else adminLinkCard.classList.add('hidden');
+    }else{
+      currentUser=null;
+      show(viewLogin);
+    }
+  });
+
+  // --- SEARCH & TRADINGVIEW ---
+  function renderTradingView(symbol){
+    tvWidgetWrap.innerHTML='';
+    new TradingView.widget({
+      width:'100%',
+      height:420,
+      symbol:'NSE:'+symbol,
+      interval:'60',
+      timezone:'Asia/Kolkata',
+      theme:'light',
+      style:'1',
+      container_id:tvWidgetWrap.id
+    });
+  }
+
+  btnSearch.addEventListener('click', async ()=>{
+    const q = searchInput.value.trim();
+    if(!q){ alert("Type company name"); return;}
+    try{
+      const res = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${FINNHUB_API}`);
+      const data = await res.json();
+      if(data.result && data.result.length>0){
+        const company = data.result[0];
+        selectedSymbol = company.symbol;
+        stockPanel.classList.remove('hidden');
+        stockNameEl.textContent=company.description+' ('+company.symbol+')';
+        renderTradingView(company.symbol.replace('.NS',''));
+      }else{
+        alert("No matching company");
+      }
+    }catch(e){alert("Search failed");}
+  });
+
+});
+</script>
+</body>
+</html>
